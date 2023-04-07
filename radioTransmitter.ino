@@ -14,7 +14,7 @@ void setup() {
   radio.openWritingPipe(address);
   radio.setPALevel(RF24_PA_MAX);
   radio.stopListening();
-  radio.setAutoAck(false);
+  radio.setAutoAck(true);
   radio.setDataRate(RF24_250KBPS);
 
   pinMode(2,INPUT_PULLUP);
@@ -24,10 +24,13 @@ void setup() {
 void loop() {
 
   if(!digitalRead(2)){
-    delay(50);
-    const char text[] = "t";
-    radio.write(&text, sizeof(text));
-    while(!digitalRead(2)){};
+    delay(5); //if button has been let go already after this, it was a bounce
+    if(!digitalRead(2)){
+      delay(50); //wait to stop bouncing in case it still is
+      const char text[] = "t";
+      radio.write(&text, sizeof(text));
+      while(!digitalRead(2)){}; //wait to start detecting new presses until user lets go
+    }
   }
 
 /*
