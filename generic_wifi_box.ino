@@ -11,6 +11,29 @@ blinking green/orange: config portal active and connected to wifi
  */
   // known issue -- if connected to wifi without internet, it will be blocking in the mqtt loop
 
+//TODO: make button presses for less than 1-5 ms invalid
+//re-initialize radio a few ms after each relay toggle
+//add disclaimer to beginning about radio re-initialization and a way to disable that
+
+//~~~~~~~WIRING~~~~~~~
+/*
+ * NRF24::ESP8266
+ * CE::D4
+ * SCK::D5
+ * MISO::D6
+ * CSN::D2
+ * MOSI::D7
+ * 
+ * Green leg of LED to D8 with 470 ohm resistor
+ * Red leg of LED to D3 with 470 ohm resistor
+ * Relay to D0
+ * Button between D1 and GND
+ */
+
+//~~~PARAMETERS TO SET~~~
+boolean reinitializeRadioAfterRelayOperation=true; //Set this to true if your radio stops working until reboot after a few relay operations. Setting this true causes the relay to be re-initialized after each relay operation
+
+
 #include <RF24.h>
 #include <ESP8266WiFi.h>
 #include <WiFiManager.h>
@@ -49,9 +72,10 @@ void setup() {
   Serial.println(radio.begin());
   radio.openReadingPipe(0, address);
   radio.setPALevel(RF24_PA_MAX);
+  //radio.setPALevel(RF24_PA_MIN);
   radio.startListening();
   radio.setDataRate(RF24_250KBPS);
-  radio.setAutoAck(false);
+  radio.setAutoAck(true);
   
   // Uncomment and run it once, if you want to erase all the stored information
   //wifiManager.resetSettings();
@@ -101,24 +125,28 @@ void loop() {
   if (radio.available()){
     char text[5] = "";
     radio.read(&text, sizeof(text));
+    Serial.print("Radio command: ");
     Serial.println(text);
     if(text[0]=='t'){
-      relayToggle();
+      relayToggle("Radio",String(text));
     }
     if(text[0]=='0'){
-      relayOff();
+      relayOff("Radio",String(text));
     }
     if(text[0]=='1'){
-      relayOn();
+      relayOn("Radio",String(text));
     }
   }
 
   //HANDLE BUTTON: press = toggle. hold = start config portal
   if(!digitalRead(D1)){
-    if(millis()-debounceTimer>500){
-      relayToggle();
+    delay(10); //ignore button presses less than this duration in hopes that this will get rid of the ghost triggers
+    if(!digitalRead(D1)){
+      if(millis()-debounceTimer>500){
+        relayToggle("Button","N/A");
+      }
+      debounceTimer=millis();
     }
-    debounceTimer=millis();
   }else{ //reset button timer if it's not being held down
     buttonTimer = millis();
   }
@@ -143,33 +171,62 @@ void Received_Message(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
+  String messageString;
   for (int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
+    messageString+=(char)payload[i];
   }
   Serial.println();
 
   if((char)payload[0]=='0'){
-    relayOff();
+    relayOff("MQTT",messageString);
   }else if((char)payload[0]=='1'){
-    relayOn();
+    relayOn("MQTT",messageString);
   }else if((char)payload[0]=='t'){
-    relayToggle();
+    relayToggle("MQTT",messageString);
   }
 }
 
-void relayOn(){
+void debugSend(String msg){
+  char buf[70];
+  msg.toCharArray(buf,msg.length()+1);
+  client.publish("BlaineProjects/genericSmartOutlet1/debug",buf,true);
+}
+
+void relayOn(String source, String payload){
   digitalWrite(RELAY,HIGH);
   relayState=true;
+  String msg = "Last command=On, Source= "+source+", Payload= "+payload;
+  debugSend(msg);
+  reinitializeRadio(15); //according to datasheet activation time is 10ms. Wait for at least this long to give relay time to kill radio if it's gonna
 }
-void relayOff(){
+void relayOff(String source, String payload){
   digitalWrite(RELAY,LOW);
   relayState=false;
+  String msg = "Last command=Off, Source= "+source+", Payload= "+payload;
+  debugSend(msg);
+  reinitializeRadio(10); //according to datasheet release time is 5ms. Wait for at least this long to give relay time to kill radio if it's gonna
 }
-void relayToggle(){
+void relayToggle(String source, String payload){
   if(relayState){
-    relayOff();
+    relayOff("undefToggle","undefToggle");
   }else{
-    relayOn();
+    relayOn("undefToggle","undefToggle");
+  }
+  String msg = "Last command=Toggle, Source= "+source+", Payload= "+payload;
+  debugSend(msg);
+}
+
+void reinitializeRadio(int wait){
+  if(reinitializeRadioAfterRelayOperation){
+    delay(wait);
+    radio.begin();
+    radio.openReadingPipe(0, address);
+    radio.setPALevel(RF24_PA_MAX);
+    //radio.setPALevel(RF24_PA_MIN);
+    radio.startListening();
+    radio.setDataRate(RF24_250KBPS);
+    radio.setAutoAck(true);
   }
 }
 
