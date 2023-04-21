@@ -236,8 +236,8 @@ void reconnect() {
     statusLEDColor("red"); //to indicate we're currently blocking as we try to reconnect
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    char* clientName="genericSmartOutlet1";
-    if (client.connect(clientName)) { //name of this client
+    //char* clientName="genericSmartOutlet1";
+    if (client.connect(WiFi.macAddress().c_str())) { //name of this client -- make MAC so it's unique
       Serial.println("connected");
       // Once connected, publish an announcement...
       //client.publish("BlaineChelseyHeart/ChelseyRcv", "value"));
