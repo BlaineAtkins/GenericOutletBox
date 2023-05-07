@@ -145,14 +145,14 @@ void saveConfigParams(){
   //do some validation before saving them to eeprom so we only save parameters in a valid form (only necessary for some)
   if(strcmp(ch_radioReInit,"true")!=0 && strcmp(ch_radioReInit,"false")!=0){ //set to false if user entered something other than true or false
     reinitializeRadioAfterRelayOperation=false;
+    strcpy(ch_radioReInit,"false");
   }
-  strcpy(ch_radioReInit,"false");
   param_radioReInit.setValue(ch_radioReInit,5); //update parameter so if user stays in config portal, it will show new value without a reboot
 
   if(strcmp(ch_turnOffAtSpecifiedTime,"true")!=0 && strcmp(ch_turnOffAtSpecifiedTime,"false")!=0){ 
     turnOffAtSpecifiedTime=false;
+    strcpy(ch_turnOffAtSpecifiedTime,"false");
   }
-  strcpy(ch_turnOffAtSpecifiedTime,"false");
   param_turnOffAtSpecifiedTime.setValue(ch_turnOffAtSpecifiedTime,5);
 
   turnOffTime=atoi(ch_turnOffTime); //returns 0 if user entered non-number, which is ok because that's just midnight
@@ -164,8 +164,8 @@ void saveConfigParams(){
 
   if(strcmp(ch_turnOnAtSpecifiedTime,"true")!=0 && strcmp(ch_turnOnAtSpecifiedTime,"false")!=0){ //strcmp() returns 0 if they're equal
     turnOnAtSpecifiedTime=false;
+    strcpy(ch_turnOnAtSpecifiedTime,"false");
   }
-  strcpy(ch_turnOnAtSpecifiedTime,"false");
   param_turnOnAtSpecifiedTime.setValue(ch_turnOnAtSpecifiedTime,5);
 
   turnOnTime=atoi(ch_turnOnTime); //returns 0 if user entered non-number, which is ok because that's just midnight
@@ -339,7 +339,7 @@ void setup() {
   
 
   timeClient.begin();
-  timeClient.setTimeOffset(3600*GMTTimezone+1); //NM is GMT -7 (i think you need to put GMT+1?
+  timeClient.setTimeOffset(3600*GMTTimezone);
 
   Serial.print("Radio initialization code: ");
   Serial.println(radio.begin());
@@ -464,9 +464,9 @@ void checkOvercurrent(){
 void turnOffAtTime(){ //NOTE this was written haistily and has only been tested at times early in the morning. It will fail past 10pm and possibly behave oddly at other times
   turnOffTime=1; //in hours, ex: 13 is 1:00pm
   if(millis()-ntpCheckTimer>60000*5){ //only process every 5 mins
-    //Serial.println("checking time...");
+    Serial.println("checking time...");
     timeClient.update();
-    //Serial.println(timeClient.getHours());
+    Serial.println(timeClient.getHours());
     if(timeClient.getHours()==turnOffTime){ //turn off at 1am, but stop trying to after 2am.
       if(!timerTurnedOffToday){
         relayOff("Timer",String(timeClient.getHours()));
