@@ -31,7 +31,7 @@ blinking green/orange: config portal active and connected to wifi
 //PARAMETERS SET BY CONFIG PORTAL
 bool reinitializeRadioAfterRelayOperation=false;
 bool turnOffAtSpecifiedTime=false;
-int turnOffTime=0; //time in hours (eg: 13 is 1:00pm) -- currently does not work for 10pm and 11pm
+int turnOffTime=0; //time in hours (eg: 13 is 1:00pm)
 bool turnOnAtSpecifiedTime=false;
 int turnOnTime=0;
 int GMTTimezone=0;
@@ -76,6 +76,7 @@ unsigned long ntpCheckTimer=60000; //set to a large value so check is run at boo
 WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, "pool.ntp.org");
 bool timerTurnedOffToday=false;
+bool timerTurnedOnToday=false;
 
 RF24 radio(D4,D2); //CSN,CE D2,D4
 //radio address is at top in settable parameters
@@ -88,9 +89,9 @@ WiFiManager wifiManager;
 //parameters declared here for global, then updated in setup() with correct values
 WiFiManagerParameter param_radioReInit("paramID_radioReInit", "Reinitialize Radio After Relay Operation (set true if radio stops working after some time)", "TEMP", 10);
 WiFiManagerParameter param_turnOffAtSpecifiedTime("paramID_turnOffAtSpecifiedTime", "Turn Off Outlet At Time (set true if you want this outlet to turn off automatically at a certain time", "TEMP", 10);
-WiFiManagerParameter param_turnOffTime("paramID_turnOffTime", "Turn Off Outlet At... (time in hours to turn off at. ex: 13 is 1:00pm. Doesn't work for 10pm & 11pm)", "TEMP", 10);
+WiFiManagerParameter param_turnOffTime("paramID_turnOffTime", "Turn Off Outlet At... (time in hours to turn off at. ex: 13 is 1:00pm)", "TEMP", 10);
 WiFiManagerParameter param_turnOnAtSpecifiedTime("paramID_turnOnAtSpecifiedTime", "Turn On Outlet At Time (set true if you want this outlet to turn on automatically at a certain time", "TEMP", 10);
-WiFiManagerParameter param_turnOnTime("paramID_turnOnTime", "Turn On Outlet At... (time in hours to turn on at. ex: 13 is 1:00pm. Doesn't work for 10pm & 11pm)", "TEMP", 10);
+WiFiManagerParameter param_turnOnTime("paramID_turnOnTime", "Turn On Outlet At... (time in hours to turn on at. ex: 13 is 1:00pm", "TEMP", 10);
 WiFiManagerParameter param_GMTTimezone("paramID_GMTTimezone", "GMT Timezone (ex: put \"-7\" for -7 GMT", "TEMP", 10);
 WiFiManagerParameter param_radioAddress("paramID_radioAddress", "Radio byte address", "TEMP", 10);
 WiFiManagerParameter param_mqtt_server("paramID_mqtt_server", "MQTT Server", "TEMP", 10);
@@ -156,7 +157,7 @@ void saveConfigParams(){
   param_turnOffAtSpecifiedTime.setValue(ch_turnOffAtSpecifiedTime,5);
 
   turnOffTime=atoi(ch_turnOffTime); //returns 0 if user entered non-number, which is ok because that's just midnight
-  if(turnOffTime>21){ //default to midnight if greater than 24 hr clock (this value currently 21 because my function can't handle values of 22 or 23, but once that's fixed it should be changed to 23)
+  if(turnOffTime>23){
     turnOffTime=0;
   }
   strcpy(ch_turnOffTime,itoa(turnOffTime,ch_turnOffTime,10));
@@ -169,7 +170,7 @@ void saveConfigParams(){
   param_turnOnAtSpecifiedTime.setValue(ch_turnOnAtSpecifiedTime,5);
 
   turnOnTime=atoi(ch_turnOnTime); //returns 0 if user entered non-number, which is ok because that's just midnight
-  if(turnOnTime>21){ //default to midnight if greater than 24 hr clock (this value currently 21 because my function can't handle values of 22 or 23, but once that's fixed it should be changed to 23)
+  if(turnOnTime>23){ //default to midnight if greater than 24 hr clock 
     turnOnTime=0;
   }
   strcpy(ch_turnOnTime,itoa(turnOnTime,ch_turnOnTime,10));
@@ -275,7 +276,7 @@ void setupConfigParameters(){
   }
 
   turnOffTime=atoi(ch_turnOffTime); //returns 0 if user entered non-number, which is ok because that's just midnight
-  if(turnOffTime>21){ //default to midnight if greater than 24 hr clock (this value currently 21 because my function can't handle values of 22 or 23, but once that's fixed it should be changed to 23)
+  if(turnOffTime>23){ //default to midnight if greater than 24 hr clock
     turnOffTime=0;
   }
 
@@ -286,7 +287,7 @@ void setupConfigParameters(){
   }
 
   turnOnTime=atoi(ch_turnOnTime); //returns 0 if user entered non-number, which is ok because that's just midnight
-  if(turnOnTime>21){ //default to midnight if greater than 24 hr clock (this value currently 21 because my function can't handle values of 22 or 23, but once that's fixed it should be changed to 23)
+  if(turnOnTime>23){ //default to midnight if greater than 24 hr clock (this value currently 21 because my function can't handle values of 22 or 23, but once that's fixed it should be changed to 23)
     turnOnTime=0;
   }
 
@@ -461,21 +462,46 @@ void checkOvercurrent(){
   }
 }
 
-void turnOffAtTime(){ //NOTE this was written haistily and has only been tested at times early in the morning. It will fail past 10pm and possibly behave oddly at other times
-  turnOffTime=1; //in hours, ex: 13 is 1:00pm
+void turnOffAtTime(){ 
+  //turnOffTime=1; //in hours, ex: 13 is 1:00pm
   if(millis()-ntpCheckTimer>60000*5){ //only process every 5 mins
     Serial.println("checking time...");
+    Serial.print("Target time: ");
+    Serial.println(turnOffTime);
     timeClient.update();
     Serial.println(timeClient.getHours());
     if(timeClient.getHours()==turnOffTime){ //turn off at 1am, but stop trying to after 2am.
       if(!timerTurnedOffToday){
+        Serial.println("Turning off due to timer");
         relayOff("Timer",String(timeClient.getHours()));
         timerTurnedOffToday=true;
         //Serial.println("timer turning relay off");
       }
     }
-    if(timeClient.getHours()>turnOffTime){
+    if(timeClient.getHours()>turnOffTime || (turnOffTime==23 && timeClient.getHours()==0)){
       timerTurnedOffToday=false;
+    }
+    ntpCheckTimer=millis();
+  }
+}
+
+void turnOnAtTime(){
+  if(millis()-ntpCheckTimer>60000*5){ //only process every 5 mins
+    //Serial.println("checking time...");
+    //Serial.print("Target time: ");
+    //Serial.println(turnOnTime);
+    timeClient.update();
+    //Serial.println(timeClient.getHours());
+    if(timeClient.getHours()==turnOnTime){
+      if(!timerTurnedOnToday){
+        Serial.println("Turning on due to timer");
+        relayOn("Timer",String(timeClient.getHours()));
+        timerTurnedOnToday=true;
+        //Serial.println("timer turning relay off");
+      }
+    }
+    if(timeClient.getHours()>turnOnTime || (turnONTime==23 && timeClient.getHours()==0)){
+      timerTurnedOnToday=false;
     }
     ntpCheckTimer=millis();
   }
@@ -489,6 +515,9 @@ void loop() {
 
   if(turnOffAtSpecifiedTime){
     turnOffAtTime();
+  }
+  if(turnOnAtSpecifiedTime){
+    turnOnAtTime();
   }
   
   wifiManager.process(); //to let wifimanager config portal run in the background
