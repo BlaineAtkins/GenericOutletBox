@@ -500,7 +500,7 @@ void turnOnAtTime(){
         //Serial.println("timer turning relay off");
       }
     }
-    if(timeClient.getHours()>turnOnTime || (turnONTime==23 && timeClient.getHours()==0)){
+    if(timeClient.getHours()>turnOnTime || (turnOnTime==23 && timeClient.getHours()==0)){
       timerTurnedOnToday=false;
     }
     ntpCheckTimer=millis();
